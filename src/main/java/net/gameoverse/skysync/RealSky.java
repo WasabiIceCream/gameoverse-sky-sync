@@ -223,9 +223,35 @@ public final class RealSky {
         return sky().moonDeclination();
     }
 
-    /** Fraction of the sun covered by the moon (0 to 1), where the eclipse is deepest. */
+    private static volatile long minSeparationExpiresMs;
+    private static volatile double minSeparation = Double.MAX_VALUE;
+
+    /**
+     * Fraction of the sun covered by the moon (0 to 1), as seen from the centre line of
+     * the eclipse under way, if any.
+     */
     public static double solarCoverage() {
-        return sky().solarCoverage();
+        Astronomy.Sky sky = sky();
+        double separation = sky.sunSeparation();
+        if (!sky.eclipseSomewhere(separation - 0.1)) {
+            return 0.0;
+        }
+        return sky.centralCoverage(minimumSeparationAround(now()));
+    }
+
+    /** Smallest sun-moon separation within 4 hours either side, cached for 10 minutes. */
+    private static double minimumSeparationAround(long epochMs) {
+        long wall = System.currentTimeMillis();
+        if (wall < minSeparationExpiresMs) {
+            return minSeparation;
+        }
+        double min = Double.MAX_VALUE;
+        for (long t = epochMs - 4 * 3_600_000L; t <= epochMs + 4 * 3_600_000L; t += 300_000L) {
+            min = Math.min(min, Astronomy.at(t).sunSeparation());
+        }
+        minSeparation = min;
+        minSeparationExpiresMs = wall + 600_000L;
+        return min;
     }
 
     /** Lunar eclipse umbral magnitude: above 0 partial, above 1 total. */
@@ -274,22 +300,21 @@ public final class RealSky {
         }
         Eclipse solar = null;
         Eclipse lunar = null;
-        double bestSolar = 0;
         double bestLunar = 0;
         long start = now() - 6 * 3_600_000L;
+        double prevSeparation = Double.MAX_VALUE;
+        boolean falling = false;
         for (long t = start; t < start + 400L * 86_400_000L && (solar == null || lunar == null); t += 600_000L) {
             Astronomy.Sky s = Astronomy.at(t);
             if (solar == null) {
-                double c = s.solarCoverage();
-                if (c > bestSolar) {
-                    bestSolar = c;
-                    solarPeak = t;
-                } else if (bestSolar > 0 && c == 0) {
-                    Astronomy.Sky peak = Astronomy.at(solarPeak);
-                    boolean annular = peak.moonRadius() < 0.2666;
-                    solar = new Eclipse(solarPeak, bestSolar >= 0.999 ? "total" : annular && bestSolar > 0.8
-                        ? "annular" : "partial", bestSolar);
+                double separation = s.sunSeparation();
+                if (separation > prevSeparation && falling && s.eclipseSomewhere(prevSeparation)) {
+                    long peak = t - 600_000L;
+                    Astronomy.Sky atPeak = Astronomy.at(peak);
+                    solar = new Eclipse(peak, atPeak.solarKind(prevSeparation), atPeak.centralCoverage(prevSeparation));
                 }
+                falling = separation < prevSeparation;
+                prevSeparation = separation;
             }
             if (lunar == null) {
                 double p = s.penumbralMagnitude();
@@ -308,7 +333,6 @@ public final class RealSky {
         nextSearchExpiresMs = wall + 3_600_000L;
     }
 
-    private static long solarPeak;
     private static long lunarPeak;
 
     /**

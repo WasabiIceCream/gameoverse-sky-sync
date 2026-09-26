@@ -48,15 +48,41 @@ public final class Astronomy {
                 + cos(moonLatitude) * sin(OBLIQUITY) * sin(moonLongitude)));
         }
 
+        /** Distance between the sun's and moon's centres seen from Earth's centre, in degrees. */
+        public double sunSeparation() {
+            return separation(moonLongitude, moonLatitude, sunLongitude, 0);
+        }
+
+        /** True if the moon's shadow touches Earth somewhere at this separation. */
+        public boolean eclipseSomewhere(double separation) {
+            return separation < moonParallax + SUN_RADIUS + moonRadius();
+        }
+
         /**
-         * Fraction of the sun's disc the moon covers, seen from wherever on Earth the
-         * eclipse is deepest (parallax can bring the two up to one lunar parallax closer
-         * than they are from Earth's centre). 1 during a total eclipse; an annular one
-         * tops out below 1 because the moon is too small.
+         * Fraction of the sun's disc the moon covers for an observer on the eclipse's
+         * centre line, given the smallest geocentric separation this eclipse reaches.
+         * That observer sees the moon cross the sun along its track, so the local
+         * separation is the along-track distance, plus however far the shadow's axis
+         * misses Earth for a partial-only eclipse. Gives realistic timing: about two
+         * hours of partial phases and a few minutes of totality (Aug 2 2027: peak 10:06
+         * UTC, 6 minutes total; the real eclipse peaks 10:07 with 6m23s).
          */
-        public double solarCoverage() {
-            double separation = separation(moonLongitude, moonLatitude, sunLongitude, 0);
-            return overlap(SUN_RADIUS, moonRadius(), Math.max(0.0, separation - moonParallax));
+        public double centralCoverage(double minimumSeparation) {
+            if (!eclipseSomewhere(minimumSeparation)) {
+                return 0.0;
+            }
+            double separation = sunSeparation();
+            double along = Math.sqrt(Math.max(0, separation * separation - minimumSeparation * minimumSeparation));
+            double miss = Math.max(0, minimumSeparation - moonParallax);
+            return overlap(SUN_RADIUS, moonRadius(), Math.hypot(along, miss));
+        }
+
+        /** Central, annular and partial-only eclipses, from the smallest separation. */
+        public String solarKind(double minimumSeparation) {
+            if (minimumSeparation >= moonParallax) {
+                return "partial";
+            }
+            return moonRadius() >= SUN_RADIUS ? "total" : "annular";
         }
 
         /** Umbral magnitude: above 0 the moon is partly in Earth's shadow, above 1 totally. */

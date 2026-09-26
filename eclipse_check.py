@@ -28,9 +28,16 @@ def overlap(r1,r2,d):
     if d<=abs(r2-r1): return 1.0 if r2>=r1 else (r2*r2)/(r1*r1)
     a=r1*r1*math.acos((d*d+r1*r1-r2*r2)/(2*d*r1))+r2*r2*math.acos((d*d+r2*r2-r1*r1)/(2*d*r2))-0.5*math.sqrt((-d+r1+r2)*(d+r1-r2)*(d-r1+r2)*(d+r1+r2))
     return a/(math.pi*r1*r1)
+def geo(t):
+    l,b,p,ls=moon(t); return sep(l,b,ls,0), p
 def solar(t):
-    l,b,p,ls=moon(t); s=sep(l,b,ls,0); moon_r=0.2725*p
-    return overlap(SUN_R,moon_r,max(0.0,s-p))   # best place on Earth: parallax brings them up to p closer
+    """Coverage for an observer on the eclipse's centre line (RealSky.solarCoverage)."""
+    s,p=geo(t); rm=0.2725*p
+    if s>p+SUN_R+rm+0.1: return 0.0
+    smin=min(geo(t+dt.timedelta(minutes=m))[0] for m in range(-240,241,5))
+    if smin>=p+SUN_R+rm: return 0.0
+    along=math.sqrt(max(0,s*s-smin*smin)); miss=max(0,smin-p)
+    return overlap(SUN_R,rm,math.hypot(along,miss))
 def lunar(t):
     l,b,p,ls=moon(t); s=sep(l,b,ls+180,0); moon_r=0.2725*p
     umbra=1.02*(p-SUN_R+SUN_PAR); pen=1.02*(p+SUN_R+SUN_PAR)
