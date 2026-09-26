@@ -38,6 +38,7 @@ public class EnvironmentAttributeSystemBuilderMixin {
         if (DAY.equals(id)) {
             SkyTrack.EclipseEffect effect = attribute == EnvironmentAttributes.SKY_COLOR ? SkyTrack.EclipseEffect.SKY_COLOR
                 : attribute == EnvironmentAttributes.FOG_COLOR ? SkyTrack.EclipseEffect.FOG_COLOR
+                : attribute == EnvironmentAttributes.CLOUD_COLOR ? SkyTrack.EclipseEffect.CLOUD_COLOR
                 : attribute == EnvironmentAttributes.SKY_LIGHT_FACTOR ? SkyTrack.EclipseEffect.SKY_LIGHT_FACTOR
                 : attribute == EnvironmentAttributes.STAR_BRIGHTNESS ? SkyTrack.EclipseEffect.STAR_BRIGHTNESS
                 : SkyTrack.EclipseEffect.NONE;

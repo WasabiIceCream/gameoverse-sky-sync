@@ -18,7 +18,7 @@ public enum SkyTrack {
 
     /** Visual day-timeline attributes a solar eclipse darkens. */
     public enum EclipseEffect {
-        NONE, SKY_COLOR, FOG_COLOR, SKY_LIGHT_FACTOR, STAR_BRIGHTNESS;
+        NONE, SKY_COLOR, FOG_COLOR, CLOUD_COLOR, SKY_LIGHT_FACTOR, STAR_BRIGHTNESS;
 
         /** The eclipse-adjusted value of this attribute (only visual ones, never gameplay). */
         public Object apply(Object value) {
@@ -29,7 +29,7 @@ public enum SkyTrack {
             return switch (this) {
                 case SKY_LIGHT_FACTOR -> (Float) value * (float) (1 - 0.8 * d);
                 case STAR_BRIGHTNESS -> Math.max((Float) value, (float) (0.5 * Math.max(0, (d - 0.7) / 0.3)));
-                case SKY_COLOR, FOG_COLOR -> darken((Integer) value, 0.85 * d);
+                case SKY_COLOR, FOG_COLOR, CLOUD_COLOR -> darken((Integer) value, 0.85 * d);
                 case NONE -> value;
             };
         }
