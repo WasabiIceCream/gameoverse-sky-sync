@@ -11,16 +11,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Enhanced Celestials works out the moon phase from the day count itself instead of
  * reading the game's, so its full-moon rules (the Super events) and forecast would
- * stay on the old 8-day cycle. Point both overloads at the real moon. Its forecast only
- * looks a few game days (about an hour of real time) ahead, so today's phase stands in
- * for those nights too. Optional: does nothing if Enhanced Celestials isn't installed.
+ * stay on the old 8-day cycle. Point both overloads at the real moon. The forecast asks
+ * about nights up to about 100 game days (a day and a half of real time) ahead, so each
+ * requested tick is converted to the real time it will fall at. Optional: does nothing
+ * if Enhanced Celestials isn't installed.
  */
 @Pseudo
 @Mixin(targets = "dev.corgitaco.enhancedcelestials2core.util.LunarTime", remap = false)
 public class EnhancedCelestialsLunarTimeMixin {
     @Inject(method = "moonPhase(J)I", at = @At("HEAD"), cancellable = true, require = 0)
     private static void gameoverse$realMoonPhase(long dayTime, CallbackInfoReturnable<Integer> cir) {
-        cir.setReturnValue(RealSky.moonPhaseIndex());
+        cir.setReturnValue(RealSky.moonPhaseIndexAt(RealSky.realTimeOfTick(dayTime)));
     }
 
     @Inject(method = "moonPhase(Lnet/minecraft/world/level/Level;)I", at = @At("HEAD"), cancellable = true, require = 0)

@@ -51,9 +51,36 @@ public final class RealSky {
         return latitude;
     }
 
+    /** Overworld clock ticks at {@link #clockSampleMs}, recorded each server tick. */
+    private static volatile long clockSampleTicks = Long.MIN_VALUE;
+    private static volatile long clockSampleMs;
+
+    /** Called every server tick with the overworld's clock, to place future ticks in real time. */
+    public static void recordClock(long ticks) {
+        clockSampleTicks = ticks;
+        clockSampleMs = System.currentTimeMillis();
+    }
+
+    /**
+     * The real time a given overworld clock tick falls at, assuming 20 ticks per second
+     * from the last recorded tick. Now, if no tick has been recorded (e.g. on a client).
+     */
+    public static long realTimeOfTick(long ticks) {
+        long sample = clockSampleTicks;
+        if (sample == Long.MIN_VALUE) {
+            return System.currentTimeMillis();
+        }
+        return clockSampleMs + (ticks - sample) * 50L;
+    }
+
     /** Days since the last new moon, 0 to {@link #SYNODIC_MONTH}. */
     public static double lunarAge() {
-        double days = (System.currentTimeMillis() - NEW_MOON_EPOCH_MS) / 86_400_000.0;
+        return lunarAgeAt(System.currentTimeMillis());
+    }
+
+    /** Days since the last new moon at the given real time. */
+    public static double lunarAgeAt(long epochMs) {
+        double days = (epochMs - NEW_MOON_EPOCH_MS) / 86_400_000.0;
         double age = days % SYNODIC_MONTH;
         return age < 0 ? age + SYNODIC_MONTH : age;
     }
@@ -70,7 +97,12 @@ public final class RealSky {
      * exact moment, the way they look in the real sky.
      */
     public static int moonPhaseIndex() {
-        double age = lunarAge();
+        return moonPhaseIndexAt(System.currentTimeMillis());
+    }
+
+    /** {@link #moonPhaseIndex()} at the given real time. */
+    public static int moonPhaseIndexAt(long epochMs) {
+        double age = lunarAgeAt(epochMs);
         double q = SYNODIC_MONTH / 4;
         if (age < 1 || age >= SYNODIC_MONTH - 1) return 4;
         if (age < q - 1) return 5;
