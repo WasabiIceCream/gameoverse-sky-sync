@@ -3,8 +3,10 @@ package net.gameoverse.skysync;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.MonthDay;
+import java.time.ZoneId;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -14,18 +16,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The real sky for today, from the machine's clock: the moon's age and phase, and how
- * much of the day the sun is up at the configured latitude. Only whole-day values and
- * the moon phase are used, so a client and the server agree as long as their clocks are
- * roughly right.
+ * The real sky, from the machine's clock: the sun's and moon's positions (see
+ * {@link Astronomy}), the moon's phase, how long each is above the horizon at the
+ * configured latitude, and any eclipse under way. A client and the server agree as long
+ * as their clocks are roughly right.
  */
 public final class RealSky {
     public static final Logger LOGGER = LoggerFactory.getLogger("gameoverse_sky_sync");
 
     /** Mean synodic month, in days. */
     public static final double SYNODIC_MONTH = 29.530588853;
-    /** A known new moon: 2000-01-06 18:14 UTC. */
-    private static final long NEW_MOON_EPOCH_MS = 947_182_440_000L;
     /** March equinox, the start of the year for the sun's tilt and seasonal events. */
     private static final MonthDay MARCH_EQUINOX = MonthDay.of(3, 20);
 
@@ -38,6 +38,11 @@ public final class RealSky {
     private static double daylightOverride = Double.NaN;
     /** Testing only: a fixed solar declination in degrees (config "declination_override"). */
     private static double declinationOverride = Double.NaN;
+    /**
+     * Testing only (config "sky_time_override", an ISO instant like 2027-08-02T08:40:00Z):
+     * the sky starts at that moment when the game starts and runs on from there.
+     */
+    private static long timeOffsetMs;
 
     static {
         loadConfig();
@@ -45,12 +50,35 @@ public final class RealSky {
 
     private static volatile long cacheExpiresMs;
     private static volatile double cachedDaylight = 0.5;
+    private static volatile long skyExpiresMs;
+    private static volatile Astronomy.Sky cachedSky;
 
     private RealSky() {
     }
 
     public static double latitude() {
         return latitude;
+    }
+
+    /** The sky's "now": the real time, or the testing override's moving time. */
+    public static long now() {
+        return System.currentTimeMillis() + timeOffsetMs;
+    }
+
+    /** The sun and moon right now, recomputed at most once a second. */
+    public static Astronomy.Sky sky() {
+        long wall = System.currentTimeMillis();
+        Astronomy.Sky sky = cachedSky;
+        if (sky == null || wall >= skyExpiresMs) {
+            sky = Astronomy.at(now());
+            cachedSky = sky;
+            skyExpiresMs = wall + 1000L;
+        }
+        return sky;
+    }
+
+    private static LocalDate today() {
+        return Instant.ofEpochMilli(now()).atZone(ZoneId.systemDefault()).toLocalDate();
     }
 
     /** Overworld clock ticks at {@link #clockSampleMs}, recorded each server tick. */
@@ -60,7 +88,7 @@ public final class RealSky {
     /** Called every server tick with the overworld's clock, to place future ticks in real time. */
     public static void recordClock(long ticks) {
         clockSampleTicks = ticks;
-        clockSampleMs = System.currentTimeMillis();
+        clockSampleMs = now();
     }
 
     /**
@@ -70,21 +98,19 @@ public final class RealSky {
     public static long realTimeOfTick(long ticks) {
         long sample = clockSampleTicks;
         if (sample == Long.MIN_VALUE) {
-            return System.currentTimeMillis();
+            return now();
         }
         return clockSampleMs + (ticks - sample) * 50L;
     }
 
     /** Days since the last new moon, 0 to {@link #SYNODIC_MONTH}. */
     public static double lunarAge() {
-        return lunarAgeAt(System.currentTimeMillis());
+        return sky().elongation() / 360.0 * SYNODIC_MONTH;
     }
 
-    /** Days since the last new moon at the given real time. */
+    /** Days since the last new moon at the given real time, from the true elongation. */
     public static double lunarAgeAt(long epochMs) {
-        double days = (epochMs - NEW_MOON_EPOCH_MS) / 86_400_000.0;
-        double age = days % SYNODIC_MONTH;
-        return age < 0 ? age + SYNODIC_MONTH : age;
+        return Astronomy.at(epochMs).elongation() / 360.0 * SYNODIC_MONTH;
     }
 
     /** Whole lunar day, 0 (new moon) to 29. */
@@ -99,12 +125,15 @@ public final class RealSky {
      * exact moment, the way they look in the real sky.
      */
     public static int moonPhaseIndex() {
-        return moonPhaseIndexAt(System.currentTimeMillis());
+        return phaseIndexForAge(lunarAge());
     }
 
     /** {@link #moonPhaseIndex()} at the given real time. */
     public static int moonPhaseIndexAt(long epochMs) {
-        double age = lunarAgeAt(epochMs);
+        return phaseIndexForAge(lunarAgeAt(epochMs));
+    }
+
+    private static int phaseIndexForAge(double age) {
         double q = SYNODIC_MONTH / 4;
         if (age < 1 || age >= SYNODIC_MONTH - 1) return 4;
         if (age < q - 1) return 5;
@@ -123,12 +152,12 @@ public final class RealSky {
 
     /** Days since 1970-01-01 by the local calendar. */
     public static long epochDay() {
-        return LocalDate.now().toEpochDay();
+        return today().toEpochDay();
     }
 
     /** Days since the most recent March equinox, 0 to 365. */
     public static int dayOfSolarYear() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = today();
         LocalDate equinox = MARCH_EQUINOX.atYear(today.getYear());
         if (today.isBefore(equinox)) {
             equinox = MARCH_EQUINOX.atYear(today.getYear() - 1);
@@ -136,13 +165,12 @@ public final class RealSky {
         return (int) (today.toEpochDay() - equinox.toEpochDay());
     }
 
-    /** The sun's declination today in degrees (Cooper's approximation). */
+    /** The sun's declination right now, in degrees. */
     public static double solarDeclination() {
         if (!Double.isNaN(declinationOverride)) {
             return declinationOverride;
         }
-        int n = LocalDate.now().getDayOfYear();
-        return 23.44 * Math.sin(Math.toRadians(360.0 / 365.0 * (284 + n)));
+        return sky().sunDeclination();
     }
 
     /**
@@ -179,23 +207,109 @@ public final class RealSky {
 
     /** How far the moon trails the sun eastward, in degrees: 0 new, 180 full. */
     public static double moonElongation() {
-        return lunarAge() / SYNODIC_MONTH * 360.0;
+        return sky().elongation();
     }
 
-    /** The sun's ecliptic longitude today, in degrees from the March equinox. */
+    /** The sun's ecliptic longitude, in degrees from the March equinox. */
     public static double sunLongitude() {
-        return (dayOfSolarYear() + 0.5) * 360.0 / 365.2422;
+        return sky().sunLongitude();
     }
 
     /**
-     * The moon's declination in degrees, from its ecliptic longitude (the sun's plus the
-     * elongation). Ignores the orbit's 5 degree inclination, so it swings between the
-     * solstice extremes each month: a winter full moon rides high, a summer one low.
+     * The moon's declination in degrees, including its 5 degree orbital tilt. It swings
+     * north and south each month: a winter full moon rides high, a summer one low.
      */
     public static double moonDeclination() {
-        double longitude = Math.toRadians(sunLongitude() + moonElongation());
-        return Math.toDegrees(Math.asin(Math.sin(Math.toRadians(23.44)) * Math.sin(longitude)));
+        return sky().moonDeclination();
     }
+
+    /** Fraction of the sun covered by the moon (0 to 1), where the eclipse is deepest. */
+    public static double solarCoverage() {
+        return sky().solarCoverage();
+    }
+
+    /** Lunar eclipse umbral magnitude: above 0 partial, above 1 total. */
+    public static double umbralMagnitude() {
+        return sky().umbralMagnitude();
+    }
+
+    /** Lunar eclipse penumbral magnitude: above 0 the moon is in Earth's outer shadow. */
+    public static double penumbralMagnitude() {
+        return sky().penumbralMagnitude();
+    }
+
+    /**
+     * How dark the daytime sky gets from a solar eclipse, 0 to 1. Barely noticeable
+     * until most of the sun is covered, then dropping steeply to full dark at totality.
+     */
+    public static double solarDarkness() {
+        double c = solarCoverage();
+        return c < 0.8 ? c * 0.3 : 0.24 + (c - 0.8) / 0.2 * 0.76;
+    }
+
+    /** One eclipse: when its deepest point is, what kind it is, and how deep. */
+    public record Eclipse(long peakMs, String kind, double magnitude) {
+    }
+
+    private static volatile long nextSearchExpiresMs;
+    private static volatile Eclipse nextSolar;
+    private static volatile Eclipse nextLunar;
+
+    /** The next solar eclipse from now (or the one under way), within about a year. */
+    public static Eclipse nextSolarEclipse() {
+        refreshNextEclipses();
+        return nextSolar;
+    }
+
+    /** The next lunar eclipse from now (or the one under way), within about a year. */
+    public static Eclipse nextLunarEclipse() {
+        refreshNextEclipses();
+        return nextLunar;
+    }
+
+    private static void refreshNextEclipses() {
+        long wall = System.currentTimeMillis();
+        if (wall < nextSearchExpiresMs) {
+            return;
+        }
+        Eclipse solar = null;
+        Eclipse lunar = null;
+        double bestSolar = 0;
+        double bestLunar = 0;
+        long start = now() - 6 * 3_600_000L;
+        for (long t = start; t < start + 400L * 86_400_000L && (solar == null || lunar == null); t += 600_000L) {
+            Astronomy.Sky s = Astronomy.at(t);
+            if (solar == null) {
+                double c = s.solarCoverage();
+                if (c > bestSolar) {
+                    bestSolar = c;
+                    solarPeak = t;
+                } else if (bestSolar > 0 && c == 0) {
+                    Astronomy.Sky peak = Astronomy.at(solarPeak);
+                    boolean annular = peak.moonRadius() < 0.2666;
+                    solar = new Eclipse(solarPeak, bestSolar >= 0.999 ? "total" : annular && bestSolar > 0.8
+                        ? "annular" : "partial", bestSolar);
+                }
+            }
+            if (lunar == null) {
+                double p = s.penumbralMagnitude();
+                if (p > bestLunar) {
+                    bestLunar = p;
+                    lunarPeak = t;
+                } else if (bestLunar > 0 && p <= 0) {
+                    double u = Astronomy.at(lunarPeak).umbralMagnitude();
+                    lunar = new Eclipse(lunarPeak, u >= 1 ? "total" : u > 0 ? "partial" : "penumbral",
+                        u > 0 ? u : bestLunar);
+                }
+            }
+        }
+        nextSolar = solar;
+        nextLunar = lunar;
+        nextSearchExpiresMs = wall + 3_600_000L;
+    }
+
+    private static long solarPeak;
+    private static long lunarPeak;
 
     /**
      * The moon's vanilla sky angle in degrees at the given (fractional) clock tick. It is
@@ -258,6 +372,12 @@ public final class RealSky {
                         daylightOverride = Math.max(0.02, Math.min(0.98, json.get("daylight_override").getAsDouble()));
                         LOGGER.warn("daylight_override {} is set in {}: daylight length is fixed, not seasonal",
                             daylightOverride, path);
+                    }
+                    if (json.has("sky_time_override") && !json.get("sky_time_override").isJsonNull()) {
+                        Instant start = Instant.parse(json.get("sky_time_override").getAsString());
+                        timeOffsetMs = start.toEpochMilli() - System.currentTimeMillis();
+                        LOGGER.warn("sky_time_override {} is set in {}: the sky runs from that moment, not today",
+                            start, path);
                     }
                     if (json.has("declination_override") && !json.get("declination_override").isJsonNull()) {
                         declinationOverride = Math.max(-23.44, Math.min(23.44, json.get("declination_override").getAsDouble()));

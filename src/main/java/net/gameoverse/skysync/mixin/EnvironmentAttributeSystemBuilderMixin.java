@@ -5,6 +5,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.attribute.EnvironmentAttribute;
 import net.minecraft.world.attribute.EnvironmentAttributeSystem;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.clock.ClockManager;
 import net.minecraft.world.timeline.AttributeTrackSampler;
 import net.minecraft.world.timeline.Timeline;
@@ -33,6 +34,14 @@ public class EnvironmentAttributeSystemBuilderMixin {
             ((SkyTrack.Tagged) sampler).gameoverse$setSkyTrack(SkyTrack.MOON);
         } else if (DAY.equals(id) || VILLAGER_SCHEDULE.equals(id)) {
             ((SkyTrack.Tagged) sampler).gameoverse$setSkyTrack(SkyTrack.DAY);
+        }
+        if (DAY.equals(id)) {
+            SkyTrack.EclipseEffect effect = attribute == EnvironmentAttributes.SKY_COLOR ? SkyTrack.EclipseEffect.SKY_COLOR
+                : attribute == EnvironmentAttributes.FOG_COLOR ? SkyTrack.EclipseEffect.FOG_COLOR
+                : attribute == EnvironmentAttributes.SKY_LIGHT_FACTOR ? SkyTrack.EclipseEffect.SKY_LIGHT_FACTOR
+                : attribute == EnvironmentAttributes.STAR_BRIGHTNESS ? SkyTrack.EclipseEffect.STAR_BRIGHTNESS
+                : SkyTrack.EclipseEffect.NONE;
+            ((SkyTrack.Tagged) sampler).gameoverse$setEclipseEffect(effect);
         }
         return sampler;
     }

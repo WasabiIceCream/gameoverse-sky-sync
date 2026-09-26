@@ -9,7 +9,9 @@ import net.minecraft.world.timeline.AttributeTrackSampler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** Feeds a tagged sampler the real sky's time instead of the world clock. */
 @Mixin(AttributeTrackSampler.class)
@@ -17,9 +19,25 @@ public class AttributeTrackSamplerMixin implements SkyTrack.Tagged {
     @Unique
     private SkyTrack gameoverse$skyTrack = SkyTrack.CLOCK;
 
+    @Unique
+    private SkyTrack.EclipseEffect gameoverse$eclipseEffect = SkyTrack.EclipseEffect.NONE;
+
     @Override
     public void gameoverse$setSkyTrack(SkyTrack track) {
         gameoverse$skyTrack = track;
+    }
+
+    @Override
+    public void gameoverse$setEclipseEffect(SkyTrack.EclipseEffect effect) {
+        gameoverse$eclipseEffect = effect;
+    }
+
+    /** Darkens the sky during a solar eclipse (visual attributes only). */
+    @Inject(method = "applyTimeBased", at = @At("RETURN"), cancellable = true)
+    private void gameoverse$eclipse(Object value, int tickId, CallbackInfoReturnable<Object> cir) {
+        if (gameoverse$eclipseEffect != SkyTrack.EclipseEffect.NONE) {
+            cir.setReturnValue(gameoverse$eclipseEffect.apply(cir.getReturnValue()));
+        }
     }
 
     @Redirect(method = "applyTimeBased", at = @At(value = "INVOKE",
