@@ -33,7 +33,13 @@ public final class RealSky {
     private static final int NOON = 6000;
     private static final int HALF_DAY = 12000;
 
-    private static final double latitude = loadLatitude();
+    private static double latitude = 40.8;
+    /** Testing only: a fixed daylight fraction instead of today's (config "daylight_override"). */
+    private static double daylightOverride = Double.NaN;
+
+    static {
+        loadConfig();
+    }
 
     private static volatile long cacheExpiresMs;
     private static volatile double cachedDaylight = 0.5;
@@ -107,6 +113,9 @@ public final class RealSky {
      * sunrise to sunset (upper limb, with refraction). 0.5 at the equinoxes.
      */
     public static double daylightFraction() {
+        if (!Double.isNaN(daylightOverride)) {
+            return daylightOverride;
+        }
         long now = System.currentTimeMillis();
         if (now < cacheExpiresMs) {
             return cachedDaylight;
@@ -144,15 +153,21 @@ public final class RealSky {
         return NOON + noonIndex * DAY_TICKS + Math.round(Math.copySign(vanilla, fromNoon));
     }
 
-    private static double loadLatitude() {
-        double fallback = 40.8;
+    private static void loadConfig() {
+        double fallback = latitude;
         Path path = FabricLoader.getInstance().getConfigDir().resolve("gameoverse-sky-sync.json");
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         try {
             if (Files.exists(path)) {
                 JsonObject json = gson.fromJson(Files.readString(path), JsonObject.class);
                 if (json != null && json.has("latitude")) {
-                    return Math.max(-89.0, Math.min(89.0, json.get("latitude").getAsDouble()));
+                    latitude = Math.max(-89.0, Math.min(89.0, json.get("latitude").getAsDouble()));
+                    if (json.has("daylight_override") && !json.get("daylight_override").isJsonNull()) {
+                        daylightOverride = Math.max(0.02, Math.min(0.98, json.get("daylight_override").getAsDouble()));
+                        LOGGER.warn("daylight_override {} is set in {}: daylight length is fixed, not seasonal",
+                            daylightOverride, path);
+                    }
+                    return;
                 }
             }
             JsonObject json = new JsonObject();
@@ -164,6 +179,5 @@ public final class RealSky {
         } catch (IOException | RuntimeException e) {
             LOGGER.warn("Couldn't read {}, using latitude {}: {}", path, fallback, e.toString());
         }
-        return fallback;
     }
 }
