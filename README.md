@@ -7,7 +7,7 @@ the real world:
   quarter, full, third quarter) each last about two days around the exact moment,
   the crescents and gibbous phases fill the rest, as they look in the real sky.
 - **Daylight length** follows the real date at the configured latitude: at the
-  default 40.8N (the production server's datacenter, Secaucus NJ, looked up from its
+  default 40.8N (the production server's location, New York City / Englewood Cliffs NJ by its
   IP), about 12.6 minutes of daylight per 20-minute day at the June solstice, 10 at
   the equinoxes and 7.7 at the December solstice. The day stays 20 minutes long, and
   noon and midnight stay at ticks 6000 and 18000.

@@ -204,7 +204,7 @@ public final class RealSky {
             }
             JsonObject json = new JsonObject();
             json.addProperty("_comment", "Latitude whose daylight length the overworld follows. "
-                + "Default: the production server's datacenter (Secaucus, NJ).");
+                + "Default: the production server's location (New York City area, from its IP).");
             json.addProperty("latitude", fallback);
             Files.createDirectories(path.getParent());
             Files.writeString(path, gson.toJson(json));
