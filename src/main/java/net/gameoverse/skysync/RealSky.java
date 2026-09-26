@@ -36,6 +36,8 @@ public final class RealSky {
     private static double latitude = 40.8;
     /** Testing only: a fixed daylight fraction instead of today's (config "daylight_override"). */
     private static double daylightOverride = Double.NaN;
+    /** Testing only: a fixed solar declination in degrees (config "declination_override"). */
+    private static double declinationOverride = Double.NaN;
 
     static {
         loadConfig();
@@ -136,6 +138,9 @@ public final class RealSky {
 
     /** The sun's declination today in degrees (Cooper's approximation). */
     public static double solarDeclination() {
+        if (!Double.isNaN(declinationOverride)) {
+            return declinationOverride;
+        }
         int n = LocalDate.now().getDayOfYear();
         return 23.44 * Math.sin(Math.toRadians(360.0 / 365.0 * (284 + n)));
     }
@@ -198,6 +203,11 @@ public final class RealSky {
                         daylightOverride = Math.max(0.02, Math.min(0.98, json.get("daylight_override").getAsDouble()));
                         LOGGER.warn("daylight_override {} is set in {}: daylight length is fixed, not seasonal",
                             daylightOverride, path);
+                    }
+                    if (json.has("declination_override") && !json.get("declination_override").isJsonNull()) {
+                        declinationOverride = Math.max(-23.44, Math.min(23.44, json.get("declination_override").getAsDouble()));
+                        LOGGER.warn("declination_override {} is set in {}: the sun's tilt is fixed, not seasonal",
+                            declinationOverride, path);
                     }
                     return;
                 }

@@ -44,6 +44,8 @@ is still light, and in winter a little after dark.
 
 `config/gameoverse-sky-sync.json`: `latitude` (degrees north). `daylight_override`
 (0 to 1) fixes the daylight fraction, for testing only: remove it afterwards.
+`declination_override` (degrees, -23.44 to 23.44) fixes the sun's tilt, also for
+testing only; when set, daylight length follows it too.
 Both sides read their own copy; AutoModpack ships the server's.
 
 ## Build
