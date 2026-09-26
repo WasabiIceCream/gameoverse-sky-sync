@@ -157,16 +157,71 @@ public final class RealSky {
         if (now < cacheExpiresMs) {
             return cachedDaylight;
         }
-        double lat = Math.toRadians(latitude);
-        double dec = Math.toRadians(solarDeclination());
-        double cosH = (Math.sin(Math.toRadians(-0.833)) - Math.sin(lat) * Math.sin(dec))
-            / (Math.cos(lat) * Math.cos(dec));
-        cosH = Math.max(-1.0, Math.min(1.0, cosH));
-        // Keep a sliver of night and day even at the poles, so the warp never divides by zero.
-        double fraction = Math.max(0.02, Math.min(0.98, Math.toDegrees(Math.acos(cosH)) / 180.0));
+        double fraction = upFraction(solarDeclination());
         cachedDaylight = fraction;
         cacheExpiresMs = now + 60_000L;
         return fraction;
+    }
+
+    /**
+     * Fraction of a day a body at the given declination spends above the horizon at
+     * {@link #latitude()} (upper limb, with refraction). Clamped so the warp never
+     * divides by zero, even at polar latitudes.
+     */
+    public static double upFraction(double declinationDegrees) {
+        double lat = Math.toRadians(latitude);
+        double dec = Math.toRadians(declinationDegrees);
+        double cosH = (Math.sin(Math.toRadians(-0.833)) - Math.sin(lat) * Math.sin(dec))
+            / (Math.cos(lat) * Math.cos(dec));
+        cosH = Math.max(-1.0, Math.min(1.0, cosH));
+        return Math.max(0.02, Math.min(0.98, Math.toDegrees(Math.acos(cosH)) / 180.0));
+    }
+
+    /** How far the moon trails the sun eastward, in degrees: 0 new, 180 full. */
+    public static double moonElongation() {
+        return lunarAge() / SYNODIC_MONTH * 360.0;
+    }
+
+    /** The sun's ecliptic longitude today, in degrees from the March equinox. */
+    public static double sunLongitude() {
+        return (dayOfSolarYear() + 0.5) * 360.0 / 365.2422;
+    }
+
+    /**
+     * The moon's declination in degrees, from its ecliptic longitude (the sun's plus the
+     * elongation). Ignores the orbit's 5 degree inclination, so it swings between the
+     * solstice extremes each month: a winter full moon rides high, a summer one low.
+     */
+    public static double moonDeclination() {
+        double longitude = Math.toRadians(sunLongitude() + moonElongation());
+        return Math.toDegrees(Math.asin(Math.sin(Math.toRadians(23.44)) * Math.sin(longitude)));
+    }
+
+    /**
+     * The moon's vanilla sky angle in degrees at the given (fractional) clock tick. It is
+     * where the sun would be when delayed by the elongation, warped to the moon's own
+     * time above the horizon. At full moon this is vanilla's "opposite the sun".
+     */
+    public static double moonAngleDegrees(double totalTicks) {
+        double lagTicks = moonElongation() / 360.0 * DAY_TICKS;
+        double ticks = warpDayTicks(totalTicks - lagTicks, upFraction(moonDeclination()));
+        double fromNoon = ((ticks - NOON) % DAY_TICKS + DAY_TICKS) % DAY_TICKS;
+        return fromNoon / DAY_TICKS * 360.0;
+    }
+
+    /**
+     * {@link #warpDayTicks(long)} for any up-fraction and fractional ticks, so a body
+     * moves smoothly between frames.
+     */
+    public static double warpDayTicks(double totalTicks, double upFraction) {
+        double noonIndex = Math.floor((totalTicks + NOON) / DAY_TICKS);
+        double fromNoon = totalTicks - (NOON + noonIndex * DAY_TICKS);
+        double actualHalfDay = HALF_DAY * upFraction;
+        double distance = Math.abs(fromNoon);
+        double vanilla = distance <= actualHalfDay
+            ? distance * NOON / actualHalfDay
+            : NOON + (distance - actualHalfDay) * NOON / (HALF_DAY - actualHalfDay);
+        return NOON + noonIndex * DAY_TICKS + Math.copySign(vanilla, fromNoon);
     }
 
     /**
