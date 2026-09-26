@@ -17,6 +17,19 @@ Even Better Moon and Sun (`../even-better-moon-sun-fabric`: sun tilt and sky eve
 by the real date). Replaces Serene Seasons Plus' seasonal daylight cycle from the
 1.21.1 server, which has no 26.1 build.
 
+- **The moon's position** (drawn by the Moon & Sun fork, maths here): it trails the
+  sun by its real elongation, stays up as long as its own declination allows, and
+  its arc tilts with that declination.
+- **Eclipses**: `Astronomy` carries the main terms of Meeus' lunar series (true
+  longitude, the 5 degree orbital latitude, parallax). Solar eclipse coverage is
+  computed for an observer on the eclipse's centre line (Aug 2 2027: peak 10:06 UTC,
+  6 minutes of totality; the real one peaks 10:07 with 6m23s); lunar eclipses use
+  Earth's umbra and penumbra (umbral magnitude within 0.02 of the published values
+  for 2026-27). `eclipse_check.py` runs the same series against known eclipses.
+  During a solar eclipse the sky colour, fog, clouds and sky light darken and stars
+  come out near totality (visual attributes only, never gameplay light); the sun
+  fading and the red moon are drawn by the fork.
+
 ## How it works
 
 26.1 drives the sky from data-driven timelines: `minecraft:day` (sun, moon and star
@@ -45,7 +58,9 @@ is still light, and in winter a little after dark.
 `config/gameoverse-sky-sync.json`: `latitude` (degrees north). `daylight_override`
 (0 to 1) fixes the daylight fraction, for testing only: remove it afterwards.
 `declination_override` (degrees, -23.44 to 23.44) fixes the sun's tilt, also for
-testing only; when set, daylight length follows it too.
+testing only; when set, daylight length follows it too. `sky_time_override` (an ISO
+instant like `2027-08-02T09:58:00Z`) starts the whole sky at that moment and runs on
+from there, for watching an eclipse; each side starts its clock when it launches.
 Both sides read their own copy; AutoModpack ships the server's.
 
 ## Build
